@@ -4,4 +4,4 @@ numpy
 plotly
 scipy
 openpyxl
-jinja2
+matplotlib
