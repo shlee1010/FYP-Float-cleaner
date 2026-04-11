@@ -33,32 +33,30 @@ if "change_log" not in st.session_state:
 if "uploader_key" not in st.session_state:
     st.session_state["uploader_key"] = 0
 
-SAMPLE_LIMIT = 50000  # 성능 보호를 위한 샘플링 한계치
+SAMPLE_LIMIT = 50000  # Sampling limit for performance protection
 
 # -----------------------------------------------------------------------------
 # 2. Utility Functions
 # -----------------------------------------------------------------------------
 @st.cache_data(show_spinner="Loading large dataset... Please wait.")
-def load_large_data(file):
-    """파일의 첫 부분만 읽어 구분자를 자동 감지한 후 메모리에 로드하는 함수"""
+def load_large_data(file): # Function to load data into memory after automatically detecting the delimiter by reading only the first part of the file.
     if file.name.endswith('.csv'):
-        # 파일의 맨 앞 1024 바이트만 읽어서 구분자(Delimiter) 추론
+        # Deliminator prediction
         file.seek(0)
         sample = file.read(1024).decode('utf-8', errors='ignore')
-        file.seek(0) # 읽고 나서 포인터를 다시 맨 앞으로 되돌림 (매우 중요)
+        file.seek(0) # Pointer goes back to the beginning
         
         try:
-            dialect = csv.Sniffer().sniff(sample)
+            dialect = csv.Sniffer().sniff(sample) # Infer delimiter by reading the first 1024 bytes of the file.
             detected_sep = dialect.delimiter
-        except Exception:
-            detected_sep = ',' # 감지 실패 시 기본값(콤마) 사용
+        except Exception: # If detection fails, use comma as default.
+            detected_sep = ','
             
         return pd.read_csv(file, sep=detected_sep)
     else:
-        return pd.read_excel(file)
+        return pd.read_excel(file) # Return to the beginning of the file pointer after reading (very important).
 
 def get_sample(df, limit=SAMPLE_LIMIT):
-    """시계열 순서를 보존하면서 전체 분포를 가져오는 샘플링 함수"""
     if len(df) > limit:
         return df.sample(n=limit, random_state=42).sort_index()
     return df.copy()
@@ -79,11 +77,10 @@ def inspect_why_object(series):
 # 3. Sidebar: Control Panel
 # -----------------------------------------------------------------------------
 st.title("🌊 Float-Insight: Human-in-the-Loop Cleaner")
-st.markdown("""
-**Sensitivity-Aware Data Cleaning Tool** Detect anomalies using statistics, but **YOU** decide what to keep.
+st.markdown("""**Sensitivity-Aware Data Cleaning Tool** Detect anomalies using statistics, but **YOU** decide what to keep.
 """)
 
-# 다양한 데이터 오류 케이스가 포함된 30행 샘플 데이터
+# Sample dataset
 SAMPLE_DATA_STRING = """Item_ID,Item_Name,Weight_kg,Price_USD,Rating,Stock_Quantity
 101,Laptop,2.5,1200.0,4.5,50
 102,Wireless Mouse,0.2,25.0,4.8,200
@@ -117,7 +114,6 @@ SAMPLE_DATA_STRING = """Item_ID,Item_Name,Weight_kg,Price_USD,Rating,Stock_Quant
 130,LED Desk Lamp,1.5,45.0,4.8,65
 """
 
-# 문자열을 Pandas DataFrame으로 변환하여 세션 상태에 저장 (최초 1회)
 if 'df' not in st.session_state:
     st.session_state.df = pd.read_csv(io.StringIO(SAMPLE_DATA_STRING))
 
@@ -127,23 +123,19 @@ with st.sidebar:
     
     if st.button("🧪 Load Sample Data"):
         try:
-            # [수정] 파일 경로 대신, 스크립트 내에 포함된 문자열 데이터를 사용합니다.
             sample_data_io = io.StringIO(SAMPLE_DATA_STRING)
-            
-            # 업로드 기능과 동일하게 구분자를 자동으로 감지하는 로직을 사용합니다.
-            # 문자열을 파일처럼 다루기 위해 io.StringIO를 사용합니다.
+        
             sample_str = sample_data_io.read(1024)
-            sample_data_io.seek(0) # 읽은 후 포인터를 다시 처음으로
+            sample_data_io.seek(0)
             
             try:
                 dialect = csv.Sniffer().sniff(sample_str)
                 detected_sep = dialect.delimiter
             except Exception:
-                detected_sep = ',' # 감지 실패 시 기본값으로 쉼표 사용
+                detected_sep = ',' 
 
             df_full = pd.read_csv(sample_data_io, sep=detected_sep)
 
-            # 새 샘플 데이터를 로드하기 전에 기존 데이터 및 로그 지우기
             st.session_state["raw_data"] = None
             st.session_state["raw_data_full"] = None
             st.session_state["original_data"] = None
@@ -151,7 +143,7 @@ with st.sidebar:
             st.session_state["change_log"] = {}
             st.session_state["uploader_key"] += 1
 
-            # 세션 상태에 샘플 데이터 로드
+            # Load sample data into session state
             st.session_state["raw_data_full"] = df_full.copy()
             st.session_state["original_data_full"] = df_full.copy()
             
@@ -161,14 +153,13 @@ with st.sidebar:
             
             st.rerun()
         except Exception as e:
-            st.error(f"샘플 데이터 로드 중 오류 발생: {e}")
+            st.error(f"Error loading sample data: {e}")
 
     uploaded_file = st.file_uploader("Upload CSV/Excel", type=["csv", "xlsx"], key=f"uploader_{st.session_state['uploader_key']}")
 
     if uploaded_file:
         if st.session_state["raw_data_full"] is None:
             try:
-                # [수정됨] delimiter 파라미터 없이 파일만 넘깁니다. (함수 내부에서 자동 감지)
                 df_full = load_large_data(uploaded_file)
                 
                 st.session_state["raw_data_full"] = df_full.copy()
@@ -203,7 +194,7 @@ with st.sidebar:
             except: pass
         
         if candidates:
-            st.warning(f"⚠️ **{len(candidates)} Columns** look numeric but are Text.")
+            st.warning(f"⚠️ **{len(candidates)} Columns** look numeric but are Text.") # If detection fails, use comma as default.
             st.caption(f"Detected: `{', '.join(candidates)}`")
             if st.button("✨ Auto-Fix All"):
                 with st.spinner("Applying structure fix to full dataset..."):
@@ -216,7 +207,7 @@ with st.sidebar:
                 st.success("Converted successfully!")
                 st.rerun()
         else:
-            st.success("✅ All data types look correct!")
+            st.success("✅ All data types look correct!") # Performance protection sampling limit.
             
         st.divider()
         st.header("🎯 3. Target Analysis")
@@ -228,7 +219,7 @@ with st.sidebar:
             selected_option = st.selectbox("Select Target Column", display_options)
             target_col = selected_option.replace("✅ ", "")
             
-            # --- [NEW] AI Recommendation Engine ---
+            # --- Recommendation Engine --- # Page Configuration & State Initialization
             sample_series_rec = current_df[target_col].dropna()
             if len(sample_series_rec) > 0:
                 skewness = sample_series_rec.skew()
@@ -237,7 +228,7 @@ with st.sidebar:
                 rec_na = "Interpolation" if is_time_series else ("Fill Median" if abs(skewness) > 1.0 else "Fill Mean")
                 rec_out = "IQR or Capping" if abs(skewness) > 1.0 else "Z-Score"
                 
-                st.info(f"💡 **AI Recommendation**\n- **Missing:** {rec_na}\n- **Outliers:** {rec_out}\n*(Based on skewness: {skewness:.2f})*")
+                st.info(f"💡 ** Recommendation**\n- **Missing:** {rec_na}\n- **Outliers:** {rec_out}\n*(Based on skewness: {skewness:.2f})*")
             # ---------------------------------------
 
             st.subheader("Strategy Settings")
@@ -265,7 +256,7 @@ with st.sidebar:
 # 4. Main Dashboard (Human-in-the-Loop Interface)
 # -----------------------------------------------------------------------------
 if st.session_state["raw_data"] is None:
-    st.info("👈 Please upload a dataset from the sidebar to begin.")
+    st.info("👈 Please upload a dataset from the sidebar to begin.") # Backend Full Data State
     st.markdown("""
     ### 🚀 Quick Start Guide
     **1. Load Data (Sidebar)**
@@ -320,7 +311,7 @@ elif target_col:
     with col_review:
         st.markdown("**Review Flagged Candidates**")
         
-        # --- [NEW] Tabs for Outliers and Missing Values ---
+        # --- Tabs for Outliers and Missing Values --- # Backend Original Data Backup
         tab_outlier, tab_missing = st.tabs(["🔴 Outliers", "👻 Missing Values"])
         
         with tab_outlier:
@@ -347,7 +338,7 @@ elif target_col:
         with tab_missing:
             missing_mask = working_df[target_col].isna()
             if missing_mask.sum() > 0:
-                missing_candidates = working_df.loc[missing_mask].copy()
+                missing_candidates = working_df.loc[missing_mask].copy() # Original Data Backup for Rollback
                 st.caption(f"⚠️ Found **{len(missing_candidates)}** missing values (NaN).")
                 st.caption("Uncheck **'Apply?'** to keep them as NaN.")
                 missing_candidates.insert(0, "Apply?", True)
@@ -413,7 +404,7 @@ elif target_col:
     new_len = len(temp_final_df)
     loss_rows = orig_len - new_len
     
-    # [REMOVED Info Loss] 심플하게 Row Removed만 표시합니다.
+    # [REMOVED Info Loss] Simply display Row Removed.
     st.metric("Rows Removed", f"{loss_rows}", help="Total count of rows dropped due to Outlier or Drop NaN settings.")
     
     tab_stat, tab_corr = st.tabs(["📋 Statistical Comparison", "🔗 Correlation Stability"])
@@ -440,7 +431,7 @@ elif target_col:
 
     with tab_corr:
         # --- [NEW] Correlation Tooltip Help ---
-        st.markdown("##### Correlation Shift ℹ️", help="""
+        st.markdown("##### Correlation Shift ℹ️", help=""" # Utility Functions
         **What is this chart?**
         It shows how the relationship (correlation) between your Target column and other numeric columns changes after cleaning.
         
@@ -477,7 +468,7 @@ elif target_col:
     overall_score = (completeness_score * 0.5) + (similarity_score * 0.5)
 
     col_score, col_blank = st.columns([1, 3])
-    with col_score:
+    with col_score: # Sidebar: Control Panel
         st.metric("🏆 Overall Quality Score", f"{overall_score:.1f} / 100")
     
     qa1, qa2, qa3 = st.columns(3)
@@ -519,7 +510,7 @@ elif target_col:
     col_preview, col_action = st.columns([1.5, 1])
 
     with col_preview:
-        st.markdown("#### 1. Final Data Preview")
+        st.markdown("#### 1. Final Data Preview") # Load Data
         st.dataframe(temp_final_df.head(10), use_container_width=True)
         st.caption(f"Showing top 10 rows of {len(temp_final_df)} total rows.")
 
@@ -608,7 +599,7 @@ elif target_col:
         st.markdown("---")
         st.markdown("#### 📜 Change Log (History)")
         
-        if st.session_state["change_log"]:
+        if st.session_state["change_log"]: # Smart Structure Fix
             log_container = st.container(height=200, border=True)
             for col_name, log_entry in st.session_state["change_log"].items():
                 log_container.markdown(f"**✅ {col_name}**: {log_entry[0]}")
